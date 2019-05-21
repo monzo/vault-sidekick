@@ -56,7 +56,7 @@ func (r *VaultResources) Set(value string) error {
 
 	// step: extract any options
 	if len(items) > 2 {
-		optionSep := getEnv("VAULT_SIDEKICK_SEPARATOR", "§")
+		optionSep := getEnv("VAULT_SIDEKICK_OPTIONS_SEPARATOR", "§")
 		for _, x := range strings.Split(items[2], optionSep) {
 			kp := strings.Split(x, "=")
 			if len(kp) != 2 {
