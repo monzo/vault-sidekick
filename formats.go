@@ -97,9 +97,7 @@ func writeCertificateBundleFile(filename string, data map[string]interface{}, mo
 	keyFile := fmt.Sprintf("%s-key.pem", filename)
 	caFile := fmt.Sprintf("%s-ca.pem", filename)
 	certFile := fmt.Sprintf("%s.pem", filename)
-
-
-
+	
 	bundle := fmt.Sprintf("%s\n\n%s\n\n%s", data["certificate"], data["issuing_ca"], data["private_key"])
 	key := fmt.Sprintf("%s\n", data["private_key"])
 	ca := fmt.Sprintf("%s\n", data["issuing_ca"])
@@ -133,7 +131,6 @@ func writeCertificateBundleChainFile(filename string, data map[string]interface{
 	keyFile := fmt.Sprintf("%s-key.pem", filename)
 	caFile := fmt.Sprintf("%s-ca.pem", filename)
 	certFile := fmt.Sprintf("%s.pem", filename)
-
 
 	bundleChain := fmt.Sprintf("%s\n\n%s", data["certificate"], data["issuing_ca"])
 	key := fmt.Sprintf("%s\n", data["private_key"])
