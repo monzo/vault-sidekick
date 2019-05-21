@@ -126,18 +126,18 @@ func writeCertificateBundleFile(filename string, data map[string]interface{}, mo
 	return nil
 }
 
-func writeCertificateBundleChainFile(filename string, data map[string]interface{}, mode os.FileMode) error {
-	bundleChainFile := fmt.Sprintf("%s-bundle-chain.pem", filename)
+func writeCertificateChainFile(filename string, data map[string]interface{}, mode os.FileMode) error {
+	certChainFile := fmt.Sprintf("%s-cert-chain.pem", filename)
 	keyFile := fmt.Sprintf("%s-key.pem", filename)
 	caFile := fmt.Sprintf("%s-ca.pem", filename)
 	certFile := fmt.Sprintf("%s.pem", filename)
 
-	bundleChain := fmt.Sprintf("%s\n\n%s", data["certificate"], data["issuing_ca"])
+	certChain := fmt.Sprintf("%s\n\n%s", data["certificate"], data["issuing_ca"])
 	key := fmt.Sprintf("%s\n", data["private_key"])
 	ca := fmt.Sprintf("%s\n", data["issuing_ca"])
 	certificate := fmt.Sprintf("%s\n", data["certificate"])
 
-	if err := writeFile(bundleChainFile, []byte(bundleChain), mode); err != nil {
+	if err := writeFile(certChainFile, []byte(certChain), mode); err != nil {
 		glog.Errorf("failed to write the bundle chain certificate file, error: %s", err)
 		return err
 	}
