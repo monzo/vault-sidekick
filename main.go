@@ -18,12 +18,14 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 
 	"github.com/golang/glog"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -32,12 +34,7 @@ var (
 	gitsha  = ""
 )
 
-func getCerts() []CertificateDesc {
-	return nil
-}
-
 func main() {
-
 
 	version := fmt.Sprintf("%s (git+sha %s)", release, gitsha)
 	// step: parse and validate the command line / environment options
@@ -62,9 +59,17 @@ func main() {
 	// step: create a channel to receive events upon and add our resources for renewal
 	updates := make(chan VaultEvent, 10)
 	vault.AddListener(updates)
+
+	// step: create a channel to receive events and keep the metrics
+	// collector data in sync
 	metricUpdates := make(chan VaultEvent, 10)
 	vault.AddListener(metricUpdates)
-	RegisterAuthMetricsCollector(metricUpdates)
+	RegisterMetricsCollector(options.vaultAuthOptions.RoleID, metricUpdates)
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		glog.Fatal(http.ListenAndServe(":8080", nil))
+	}()
 
 	// step: setup the termination signals
 	signalChannel := make(chan os.Signal)
@@ -75,7 +80,6 @@ func main() {
 		if err := rn.IsValid(); err != nil {
 			showUsage("%s", err)
 		}
-
 		vault.Watch(rn)
 	}
 
