@@ -32,7 +32,13 @@ var (
 	gitsha  = ""
 )
 
+func getCerts() []CertificateDesc {
+	return nil
+}
+
 func main() {
+
+
 	version := fmt.Sprintf("%s (git+sha %s)", release, gitsha)
 	// step: parse and validate the command line / environment options
 	if err := parseOptions(); err != nil {
@@ -56,6 +62,9 @@ func main() {
 	// step: create a channel to receive events upon and add our resources for renewal
 	updates := make(chan VaultEvent, 10)
 	vault.AddListener(updates)
+	metricUpdates := make(chan VaultEvent, 10)
+	vault.AddListener(metricUpdates)
+	RegisterAuthMetricsCollector(metricUpdates)
 
 	// step: setup the termination signals
 	signalChannel := make(chan os.Signal)
@@ -66,6 +75,7 @@ func main() {
 		if err := rn.IsValid(); err != nil {
 			showUsage("%s", err)
 		}
+
 		vault.Watch(rn)
 	}
 
