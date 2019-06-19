@@ -7,27 +7,21 @@ import (
 	"time"
 )
 
-type CertificateDesc struct {
-	CommonName string
-	Role       string
-	Expiry     time.Time
-}
-
 type MetricsCollector struct {
-	certsMetric          *prometheus.Desc
+	role string
+
+	resourceMetric       *prometheus.Desc
 	resourceErrorsMetric *prometheus.Desc
 	errorsMetric         *prometheus.Desc
 
-	role string
-
 	resourcesUpdates chan VaultEvent
-	resourceEvents   map[string]VaultEvent
+	resources        map[string]VaultEvent
 
-	resourceErrors        chan ResourceError
-	resourceErrorCounters map[ResourceError]int
+	resourceErrorUpdates chan ResourceError
+	resourceErrors       map[ResourceError]int
 
-	errors        chan Error
-	errorCounters map[Error]int
+	errorUpdates chan Error
+	errors       map[Error]int
 
 	metricsMutex sync.RWMutex
 }
@@ -54,28 +48,28 @@ func (m MetricsCollector) init() {
 
 			id := event.Resource.ID()
 			m.metricsMutex.Lock()
-			m.resourceEvents[id] = event
+			m.resources[id] = event
 			m.metricsMutex.Unlock()
-		case resourceErr := <-m.resourceErrors:
+		case resourceErr := <-m.resourceErrorUpdates:
 			m.metricsMutex.Lock()
-			m.resourceErrorCounters[resourceErr]++
+			m.resourceErrors[resourceErr]++
 			m.metricsMutex.Unlock()
-		case err := <-m.errors:
+		case err := <-m.errorUpdates:
 			m.metricsMutex.Lock()
-			m.errorCounters[err]++
+			m.errors[err]++
 			m.metricsMutex.Unlock()
 		}
 	}
 }
 
 func (m *MetricsCollector) Error(err string) {
-	m.errors <- Error{
+	m.errorUpdates <- Error{
 		err: err,
 	}
 }
 
 func (m *MetricsCollector) ResourceError(resourceID, err string) {
-	m.resourceErrors <- ResourceError{
+	m.resourceErrorUpdates <- ResourceError{
 		resourceID: resourceID,
 		err:        err,
 	}
@@ -86,7 +80,7 @@ func RegisterMetricsCollector(role string, resourcesUpdates chan VaultEvent) {
 	defer metricsMutex.Unlock()
 
 	metrics = &MetricsCollector{
-		certsMetric: prometheus.NewDesc("vault_sidekick_certificate_expiry_gauge",
+		resourceMetric: prometheus.NewDesc("vault_sidekick_certificate_expiry_gauge",
 			"vault_sidekick_certificate_expiry_gauge",
 			[]string{"common_name", "role"},
 			nil,
@@ -102,14 +96,16 @@ func RegisterMetricsCollector(role string, resourcesUpdates chan VaultEvent) {
 			nil,
 		),
 
-		role:             role,
-		resourcesUpdates: resourcesUpdates,
-		resourceErrors:   make(chan ResourceError, 10),
-		errors:           make(chan Error, 10),
+		role: role,
 
-		resourceEvents:        make(map[string]VaultEvent),
-		resourceErrorCounters: make(map[ResourceError]int),
-		errorCounters:         make(map[Error]int),
+		resourcesUpdates: resourcesUpdates,
+		resources:        make(map[string]VaultEvent),
+
+		resourceErrorUpdates: make(chan ResourceError, 10),
+		resourceErrors:       make(map[ResourceError]int),
+
+		errorUpdates: make(chan Error, 10),
+		errors:       make(map[Error]int),
 	}
 
 	go metrics.init()
@@ -125,7 +121,7 @@ func GetMetrics() *MetricsCollector {
 }
 
 func (m *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- m.certsMetric
+	ch <- m.resourceMetric
 	ch <- m.resourceErrorsMetric
 	ch <- m.errorsMetric
 }
@@ -135,7 +131,7 @@ func (m *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	defer m.metricsMutex.RUnlock()
 
 	now := time.Now()
-	for resourceID, resourceEvent := range m.resourceEvents {
+	for resourceID, resourceEvent := range m.resources {
 		certExpirationJson, ok := resourceEvent.Secret["expiration"].(json.Number)
 		if !ok {
 			m.Error("metrics_error")
@@ -149,16 +145,16 @@ func (m *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 
 		expiresIn := time.Unix(certExpiration, 0).Sub(now)
-		ch <- prometheus.MustNewConstMetric(m.certsMetric, prometheus.GaugeValue, expiresIn.Seconds(),
+		ch <- prometheus.MustNewConstMetric(m.resourceMetric, prometheus.GaugeValue, expiresIn.Seconds(),
 			resourceID, m.role)
 	}
 
-	for resourceErr, errCount := range m.resourceErrorCounters {
+	for resourceErr, errCount := range m.resourceErrors {
 		ch <- prometheus.MustNewConstMetric(m.resourceErrorsMetric, prometheus.CounterValue, float64(errCount),
 			resourceErr.resourceID, resourceErr.err, m.role)
 	}
 
-	for err, errCount := range m.errorCounters {
+	for err, errCount := range m.errors {
 		ch <- prometheus.MustNewConstMetric(m.errorsMetric, prometheus.CounterValue, float64(errCount),
 			err.err, m.role)
 	}
