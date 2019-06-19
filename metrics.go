@@ -82,7 +82,7 @@ func RegisterMetricsCollector(role string, resourcesUpdates chan VaultEvent) {
 	metrics = &MetricsCollector{
 		resourceMetric: prometheus.NewDesc("vault_sidekick_certificate_expiry_gauge",
 			"vault_sidekick_certificate_expiry_gauge",
-			[]string{"common_name", "role"},
+			[]string{"resource_id", "role"},
 			nil,
 		),
 		resourceErrorsMetric: prometheus.NewDesc("vault_sidekick_resource_error_counter",
