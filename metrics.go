@@ -10,12 +10,20 @@ import (
 type MetricsCollector struct {
 	role string
 
-	resourceMetric       *prometheus.Desc
-	resourceErrorsMetric *prometheus.Desc
-	errorsMetric         *prometheus.Desc
+	resourceMetric        *prometheus.Desc
+	resourceTotalMetric   *prometheus.Desc
+	resourceSuccessMetric *prometheus.Desc
+	resourceErrorsMetric  *prometheus.Desc
+	errorsMetric          *prometheus.Desc
 
 	resourcesUpdates chan VaultEvent
 	resources        map[string]VaultEvent
+
+	resourceTotalUpdates chan ResourceTotal
+	resourceTotals       map[ResourceTotal]int
+
+	resourceSuccessUpdates chan ResourceSuccess
+	resourceSuccesses      map[ResourceSuccess]int
 
 	resourceErrorUpdates chan ResourceError
 	resourceErrors       map[ResourceError]int
@@ -28,6 +36,14 @@ type MetricsCollector struct {
 
 type Error struct {
 	err string
+}
+
+type ResourceTotal struct {
+	resourceID string
+}
+
+type ResourceSuccess struct {
+	resourceID string
 }
 
 type ResourceError struct {
@@ -50,6 +66,14 @@ func (m MetricsCollector) init() {
 			m.metricsMutex.Lock()
 			m.resources[id] = event
 			m.metricsMutex.Unlock()
+		case resourceTotal := <-m.resourceTotalUpdates:
+			m.metricsMutex.Lock()
+			m.resourceTotals[resourceTotal]++
+			m.metricsMutex.Unlock()
+		case resourceSuccess := <-m.resourceSuccessUpdates:
+			m.metricsMutex.Lock()
+			m.resourceSuccesses[resourceSuccess]++
+			m.metricsMutex.Unlock()
 		case resourceErr := <-m.resourceErrorUpdates:
 			m.metricsMutex.Lock()
 			m.resourceErrors[resourceErr]++
@@ -65,6 +89,18 @@ func (m MetricsCollector) init() {
 func (m *MetricsCollector) Error(err string) {
 	m.errorUpdates <- Error{
 		err: err,
+	}
+}
+
+func (m *MetricsCollector) ResourceTotal(resourceID string) {
+	m.resourceTotalUpdates <- ResourceTotal{
+		resourceID: resourceID,
+	}
+}
+
+func (m *MetricsCollector) ResourceSuccess(resourceID string) {
+	m.resourceSuccessUpdates <- ResourceSuccess{
+		resourceID: resourceID,
 	}
 }
 
@@ -85,6 +121,16 @@ func RegisterMetricsCollector(role string, resourcesUpdates chan VaultEvent) {
 			[]string{"resource_id", "role"},
 			nil,
 		),
+		resourceTotalMetric: prometheus.NewDesc("vault_sidekick_resource_total_counter",
+			"vault_sidekick_resource_total_counter",
+			[]string{"resource", "role"},
+			nil,
+		),
+		resourceSuccessMetric: prometheus.NewDesc("vault_sidekick_resource_success_counter",
+			"vault_sidekick_resource_success_counter",
+			[]string{"resource", "role"},
+			nil,
+		),
 		resourceErrorsMetric: prometheus.NewDesc("vault_sidekick_resource_error_counter",
 			"vault_sidekick_resource_error_counter",
 			[]string{"resource", "error", "role"},
@@ -100,6 +146,12 @@ func RegisterMetricsCollector(role string, resourcesUpdates chan VaultEvent) {
 
 		resourcesUpdates: resourcesUpdates,
 		resources:        make(map[string]VaultEvent),
+
+		resourceTotalUpdates: make(chan ResourceTotal, 10),
+		resourceTotals:      make(map[ResourceTotal]int),
+
+		resourceSuccessUpdates: make(chan ResourceSuccess, 10),
+		resourceSuccesses:      make(map[ResourceSuccess]int),
 
 		resourceErrorUpdates: make(chan ResourceError, 10),
 		resourceErrors:       make(map[ResourceError]int),
@@ -147,6 +199,16 @@ func (m *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 		expiresIn := time.Unix(certExpiration, 0).Sub(now)
 		ch <- prometheus.MustNewConstMetric(m.resourceMetric, prometheus.GaugeValue, expiresIn.Seconds(),
 			resourceID, m.role)
+	}
+
+	for resourceTotal, totalCount := range m.resourceTotals{
+		ch <- prometheus.MustNewConstMetric(m.resourceTotalMetric, prometheus.CounterValue, float64(totalCount),
+			resourceTotal.resourceID, m.role)
+	}
+
+	for resourceSuccess, successCount := range m.resourceSuccesses {
+		ch <- prometheus.MustNewConstMetric(m.resourceSuccessMetric, prometheus.CounterValue, float64(successCount),
+			resourceSuccess.resourceID, m.role)
 	}
 
 	for resourceErr, errCount := range m.resourceErrors {
