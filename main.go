@@ -68,7 +68,7 @@ func main() {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		glog.Fatal(http.ListenAndServe(":8080", nil))
+		glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", options.metricsPort), nil))
 	}()
 
 	// step: setup the termination signals
