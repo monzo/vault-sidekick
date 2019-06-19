@@ -149,6 +149,8 @@ func (r *VaultService) vaultServiceProcessor() {
 					glog.V(10).Infof("resource: %s has a previous lease: %s", x.resource, leaseID)
 				}
 
+				GetMetrics().ResourceTotal(x.resource.ID())
+
 				err := r.get(x)
 				if err != nil {
 					GetMetrics().ResourceError(x.resource.ID(), "get_resource_failure")
@@ -162,6 +164,8 @@ func (r *VaultService) vaultServiceProcessor() {
 					})
 					break
 				}
+
+				GetMetrics().ResourceSuccess(x.resource.ID())
 
 				glog.V(4).Infof("successfully retrieved resource: %s, leaseID: %s", x.resource, x.secret.LeaseID)
 				x.resource.Retries = 0
@@ -212,6 +216,8 @@ func (r *VaultService) vaultServiceProcessor() {
 
 				// step: are we renewing the resource?
 				if x.resource.Renewable {
+					GetMetrics().ResourceTotal(x.resource.ID())
+
 					// step: is the underlining resource even renewable? - otherwise we can just grab a new lease
 					if !x.secret.Renewable {
 						glog.V(10).Infof("the resource: %s is not renewable, retrieving a new lease instead", x.resource)
@@ -234,6 +240,8 @@ func (r *VaultService) vaultServiceProcessor() {
 						break
 					}
 
+					GetMetrics().ResourceSuccess(x.resource.ID())
+
 					glog.V(4).Infof("successfully renewed resource: %s, leaseID: %s", x.resource, x.secret.LeaseID)
 					x.resource.Retries = 0
 				}
@@ -244,6 +252,7 @@ func (r *VaultService) vaultServiceProcessor() {
 					r.scheduleNow(x, retrieveChannel)
 					break
 				}
+
 
 				// step: setup a timer for renewal
 				x.notifyOnRenewal(renewChannel)
