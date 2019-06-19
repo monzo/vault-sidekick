@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"time"
@@ -15,72 +14,152 @@ type CertificateDesc struct {
 }
 
 type MetricsCollector struct {
-	certsMetric *prometheus.Desc
+	certsMetric          *prometheus.Desc
+	resourceErrorsMetric *prometheus.Desc
+	errorsMetric         *prometheus.Desc
 
-	role           string
-	updates        chan VaultEvent
-	resourceEvents map[string]VaultEvent
-	resourcesMutex sync.RWMutex
+	role string
+
+	resourcesUpdates chan VaultEvent
+	resourceEvents   map[string]VaultEvent
+
+	resourceErrors        chan ResourceError
+	resourceErrorCounters map[ResourceError]int
+
+	errors        chan Error
+	errorCounters map[Error]int
+
+	metricsMutex sync.RWMutex
 }
+
+type Error struct {
+	err string
+}
+
+type ResourceError struct {
+	resourceID string
+	err        string
+}
+
+var metrics *MetricsCollector
+var metricsMutex sync.Mutex
 
 func (m MetricsCollector) init() {
 	for {
 		select {
-		case event := <-m.updates:
+		case event := <-m.resourcesUpdates:
 			if event.Type == EventTypeFailure {
 				continue
-				// TODO: emit some nice metrics here
 			}
 
-			id := fmt.Sprintf("%v:%v", event.Resource.Resource, event.Resource.Path)
-			m.resourcesMutex.Lock()
+			id := event.Resource.ID()
+			m.metricsMutex.Lock()
 			m.resourceEvents[id] = event
-			m.resourcesMutex.Unlock()
+			m.metricsMutex.Unlock()
+		case resourceErr := <-m.resourceErrors:
+			m.metricsMutex.Lock()
+			m.resourceErrorCounters[resourceErr]++
+			m.metricsMutex.Unlock()
+		case err := <-m.errors:
+			m.metricsMutex.Lock()
+			m.errorCounters[err]++
+			m.metricsMutex.Unlock()
 		}
 	}
 }
 
-func RegisterMetricsCollector(role string, updates chan VaultEvent) {
-	collector := &MetricsCollector{
+func (m *MetricsCollector) Error(err string) {
+	m.errors <- Error{
+		err: err,
+	}
+}
+
+func (m *MetricsCollector) ResourceError(resourceID, err string) {
+	m.resourceErrors <- ResourceError{
+		resourceID: resourceID,
+		err:        err,
+	}
+}
+
+func RegisterMetricsCollector(role string, resourcesUpdates chan VaultEvent) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	metrics = &MetricsCollector{
 		certsMetric: prometheus.NewDesc("vault_sidekick_certificate_expiry_gauge",
 			"vault_sidekick_certificate_expiry_gauge",
 			[]string{"common_name", "role"},
 			nil,
 		),
-		role:           role,
-		updates:        updates,
-		resourceEvents: make(map[string]VaultEvent),
+		resourceErrorsMetric: prometheus.NewDesc("vault_sidekick_resource_error_counter",
+			"vault_sidekick_resource_error_counter",
+			[]string{"resource", "error", "role"},
+			nil,
+		),
+		errorsMetric: prometheus.NewDesc("vault_sidekick_error_counter",
+			"vault_sidekick_error_counter",
+			[]string{"error", "role"},
+			nil,
+		),
+
+		role:             role,
+		resourcesUpdates: resourcesUpdates,
+		resourceErrors:   make(chan ResourceError, 10),
+		errors:           make(chan Error, 10),
+
+		resourceEvents:        make(map[string]VaultEvent),
+		resourceErrorCounters: make(map[ResourceError]int),
+		errorCounters:         make(map[Error]int),
 	}
 
-	go collector.init()
+	go metrics.init()
 
-	prometheus.MustRegister(collector)
+	prometheus.MustRegister(metrics)
 }
 
-func (collector *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- collector.certsMetric
+func GetMetrics() *MetricsCollector {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	return metrics
 }
 
-func (collector *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
-	collector.resourcesMutex.RLock()
-	defer collector.resourcesMutex.RUnlock()
+func (m *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- m.certsMetric
+	ch <- m.resourceErrorsMetric
+	ch <- m.errorsMetric
+}
+
+func (m *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
+	m.metricsMutex.RLock()
+	defer m.metricsMutex.RUnlock()
 
 	now := time.Now()
-	for resourceID, resourceEvent := range collector.resourceEvents {
+	for resourceID, resourceEvent := range m.resourceEvents {
 		certExpirationJson, ok := resourceEvent.Secret["expiration"].(json.Number)
 		if !ok {
+			m.Error("metrics_error")
 			continue
-			// TODO: emit some nice metrics here
 		}
 
 		certExpiration, err := certExpirationJson.Int64()
 		if err != nil {
+			m.Error("metrics_error")
 			continue
-			// TODO: emit some nice metrics here
 		}
 
 		expiresIn := time.Unix(certExpiration, 0).Sub(now)
-		ch <- prometheus.MustNewConstMetric(collector.certsMetric, prometheus.GaugeValue, expiresIn.Seconds(),
-			resourceID, collector.role)
+		ch <- prometheus.MustNewConstMetric(m.certsMetric, prometheus.GaugeValue, expiresIn.Seconds(),
+			resourceID, m.role)
+	}
+
+	for resourceErr, errCount := range m.resourceErrorCounters {
+		ch <- prometheus.MustNewConstMetric(m.resourceErrorsMetric, prometheus.CounterValue, float64(errCount),
+			resourceErr.resourceID, resourceErr.err, m.role)
+	}
+
+	for err, errCount := range m.errorCounters {
+		ch <- prometheus.MustNewConstMetric(m.errorsMetric, prometheus.CounterValue, float64(errCount),
+			err.err, m.role)
 	}
 }
