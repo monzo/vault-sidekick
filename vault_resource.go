@@ -191,5 +191,5 @@ func (r VaultResource) String() string {
 }
 
 func (r VaultResource) ID() string {
-	return fmt.Sprintf("%s:%s", r.Resource, r.Path)
+	return r.Path
 }
