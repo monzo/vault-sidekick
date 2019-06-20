@@ -54,14 +54,12 @@ func main() {
 		showUsage("unable to create the vault client: %s", err)
 	}
 
-
 	//  Don't initialise metrics in one-shot mode.
 	if options.oneShot {
 		glog.Infof("running in one-shot mode")
 	} else {
 		metrics.Init(options.vaultAuthOptions.RoleID, options.metricsPort)
 	}
-
 
 	// step: create a channel to receive events upon and add our resources for renewal
 	updates := make(chan VaultEvent, 10)
@@ -140,7 +138,7 @@ func main() {
 	}
 }
 
-// reportExpiryMetrics takes a channel of VaultEvents, and reports expiry metrics for every successful renewal event
+// reportExpiryMetrics takes a channel of VaultEvents, and reports expiry metrics on every successful renewal event.
 func reportExpiryMetrics(updates chan VaultEvent) {
 	for {
 		select {
@@ -161,7 +159,7 @@ func reportExpiryMetrics(updates chan VaultEvent) {
 				continue
 			}
 
-			metrics.ResourceExpiry(event.Resource.ID(),time.Unix(certExpiration, 0))
+			metrics.ResourceExpiry(event.Resource.ID(), time.Unix(certExpiration, 0))
 		}
 	}
 }

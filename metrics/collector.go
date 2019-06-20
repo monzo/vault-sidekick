@@ -1,10 +1,12 @@
 package metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
+
 type collector struct {
 	role string
 
@@ -15,15 +17,15 @@ type collector struct {
 	errorsMetric          *prometheus.Desc
 
 	// resourceExpiry is a map from resource ID to the last observed expiry time of resource.
-	resourceExpiry        map[string]time.Time
+	resourceExpiry map[string]time.Time
 
 	// resource{Totals,Successes,Errors} tracks counts of renewals per resource ID, and whether they succeeded or failed.
-	resourceTotals       map[string]int
-	resourceSuccesses      map[string]int
-	resourceErrors       map[string]int
+	resourceTotals    map[string]int
+	resourceSuccesses map[string]int
+	resourceErrors    map[string]int
 
 	// errors Tracks counts generic, non-resource related errors, by reason.
-	errors       map[string]int
+	errors map[string]int
 
 	metricsMutex sync.RWMutex
 }
@@ -58,7 +60,6 @@ func (c *collector) Error(reason string) {
 	c.metricsMutex.Unlock()
 }
 
-
 func (c *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.resourceExpiryMetric
 	ch <- c.resourceTotalMetric
@@ -77,7 +78,7 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 			resourceID, c.role)
 	}
 
-	for resourceID, totalCount := range c.resourceTotals{
+	for resourceID, totalCount := range c.resourceTotals {
 		ch <- prometheus.MustNewConstMetric(c.resourceTotalMetric, prometheus.CounterValue, float64(totalCount),
 			resourceID, c.role)
 	}

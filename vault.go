@@ -23,9 +23,8 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"time"
 	"strings"
-
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/hashicorp/vault/api"
@@ -254,7 +253,6 @@ func (r *VaultService) vaultServiceProcessor() {
 					r.scheduleNow(x, retrieveChannel)
 					break
 				}
-
 
 				// step: setup a timer for renewal
 				x.notifyOnRenewal(renewChannel)

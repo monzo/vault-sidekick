@@ -49,13 +49,13 @@ func Init(role string, metricsPort uint) {
 
 		role: role,
 
-		resourceExpiry:        make(map[string]time.Time),
+		resourceExpiry: make(map[string]time.Time),
 
-		resourceTotals:      make(map[string]int),
-		resourceSuccesses:      make(map[string]int),
-		resourceErrors:       make(map[string]int),
+		resourceTotals:    make(map[string]int),
+		resourceSuccesses: make(map[string]int),
+		resourceErrors:    make(map[string]int),
 
-		errors:       make(map[string]int),
+		errors: make(map[string]int),
 	}
 
 	prometheus.MustRegister(col)
