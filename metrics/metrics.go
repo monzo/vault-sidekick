@@ -12,7 +12,7 @@ import (
 
 var (
 	col            *collector
-	collectorMutex sync.Mutex
+	collectorMutex sync.RWMutex
 )
 
 func Init(role string, metricsPort uint) {
@@ -46,7 +46,7 @@ func Init(role string, metricsPort uint) {
 			[]string{"error", "role"},
 			nil,
 		),
-
+		
 		role: role,
 
 		resourceExpiry:        make(map[string]time.Duration),
@@ -65,24 +65,51 @@ func Init(role string, metricsPort uint) {
 	}()
 }
 
-
-
 func ResourceExpiry(resourceID string, expiresIn time.Duration) {
+	collectorMutex.RLock()
+	defer collectorMutex.RUnlock()
+
+	if col == nil {
+		return
+	}
 	col.ResourceExpiry(resourceID, expiresIn)
 }
 
 func ResourceTotal(resourceID string) {
+	collectorMutex.RLock()
+	defer collectorMutex.RUnlock()
+
+	if col == nil {
+		return
+	}
 	col.ResourceTotal(resourceID)
 }
 
 func ResourceSuccess(resourceID string) {
+	collectorMutex.RLock()
+	defer collectorMutex.RUnlock()
+	if col == nil {
+		return
+	}
 	col.ResourceSuccess(resourceID)
 }
 
 func ResourceError(resourceID string) {
+	collectorMutex.RLock()
+	defer collectorMutex.RUnlock()
+
+	if col == nil {
+		return
+	}
 	col.ResourceError(resourceID)
 }
 
 func Error(reason string) {
+	collectorMutex.RLock()
+	defer collectorMutex.RUnlock()
+
+	if col == nil {
+		return
+	}
 	col.Error(reason)
 }
