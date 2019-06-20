@@ -14,8 +14,8 @@ type collector struct {
 	resourceErrorsMetric  *prometheus.Desc
 	errorsMetric          *prometheus.Desc
 
-	// resourceExpiry is a map from resource ID to the latest expiry, as a duration from the current time.
-	resourceExpiry        map[string]time.Duration
+	// resourceExpiry is a map from resource ID to the last observed expiry time of resource.
+	resourceExpiry        map[string]time.Time
 
 	// resource{Totals,Successes,Errors} tracks counts of renewals per resource ID, and whether they succeeded or failed.
 	resourceTotals       map[string]int
@@ -28,9 +28,9 @@ type collector struct {
 	metricsMutex sync.RWMutex
 }
 
-func (c *collector) ResourceExpiry(resourceID string, expiresIn time.Duration) {
+func (c *collector) ResourceExpiry(resourceID string, expiry time.Time) {
 	c.metricsMutex.Lock()
-	c.resourceExpiry[resourceID] = expiresIn
+	c.resourceExpiry[resourceID] = expiry
 	c.metricsMutex.Unlock()
 }
 
@@ -71,8 +71,9 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	c.metricsMutex.RLock()
 	defer c.metricsMutex.RUnlock()
 
-	for resourceID, expiresIn := range c.resourceExpiry {
-		ch <- prometheus.MustNewConstMetric(c.resourceExpiryMetric, prometheus.GaugeValue, expiresIn.Seconds(),
+	now := time.Now()
+	for resourceID, expiry := range c.resourceExpiry {
+		ch <- prometheus.MustNewConstMetric(c.resourceExpiryMetric, prometheus.GaugeValue, expiry.Sub(now).Seconds(),
 			resourceID, c.role)
 	}
 

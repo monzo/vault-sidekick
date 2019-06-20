@@ -46,10 +46,10 @@ func Init(role string, metricsPort uint) {
 			[]string{"error", "role"},
 			nil,
 		),
-		
+
 		role: role,
 
-		resourceExpiry:        make(map[string]time.Duration),
+		resourceExpiry:        make(map[string]time.Time),
 
 		resourceTotals:      make(map[string]int),
 		resourceSuccesses:      make(map[string]int),
@@ -65,14 +65,14 @@ func Init(role string, metricsPort uint) {
 	}()
 }
 
-func ResourceExpiry(resourceID string, expiresIn time.Duration) {
+func ResourceExpiry(resourceID string, expiry time.Time) {
 	collectorMutex.RLock()
 	defer collectorMutex.RUnlock()
 
 	if col == nil {
 		return
 	}
-	col.ResourceExpiry(resourceID, expiresIn)
+	col.ResourceExpiry(resourceID, expiry)
 }
 
 func ResourceTotal(resourceID string) {

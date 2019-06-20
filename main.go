@@ -161,8 +161,7 @@ func reportExpiryMetrics(updates chan VaultEvent) {
 				continue
 			}
 
-			expiresIn := time.Unix(certExpiration, 0).Sub(time.Now())
-			metrics.ResourceExpiry(event.Resource.ID(), expiresIn)
+			metrics.ResourceExpiry(event.Resource.ID(),time.Unix(certExpiration, 0))
 		}
 	}
 }
