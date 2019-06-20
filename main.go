@@ -17,12 +17,14 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -60,11 +62,13 @@ func main() {
 	updates := make(chan VaultEvent, 10)
 	vault.AddListener(updates)
 
+	go reportExpiryMetrics(updates)
+
 	// step: create a channel to receive events and keep the metrics
 	// collector data in sync
 	metricUpdates := make(chan VaultEvent, 10)
 	vault.AddListener(metricUpdates)
-	RegisterMetricsCollector(options.vaultAuthOptions.RoleID, metricUpdates)
+	RegisterMetricsCollector(options.vaultAuthOptions.RoleID)
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
@@ -132,6 +136,33 @@ func main() {
 		case <-signalChannel:
 			glog.Infof("recieved a termination signal, shutting down the service")
 			os.Exit(0)
+		}
+	}
+}
+
+// reportExpiryMetrics takes a channel of VaultEvents, and reports expiry metrics for every successful renewal event
+func reportExpiryMetrics(updates chan VaultEvent) {
+	for {
+		select {
+		case event := <-updates:
+			if event.Type == EventTypeFailure {
+				continue
+			}
+
+			certExpirationJson, ok := event.Secret["expiration"].(json.Number)
+			if !ok {
+				metrics.Error("metrics_error")
+				continue
+			}
+
+			certExpiration, err := certExpirationJson.Int64()
+			if err != nil {
+				metrics.Error("metrics_error")
+				continue
+			}
+
+			expiresIn := time.Unix(certExpiration, 0).Sub(time.Now())
+			metrics.ResourceExpiry(event.Resource.ID(), expiresIn)
 		}
 	}
 }

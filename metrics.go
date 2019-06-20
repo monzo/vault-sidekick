@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"time"
@@ -10,14 +9,14 @@ import (
 type MetricsCollector struct {
 	role string
 
-	resourceMetric        *prometheus.Desc
+	resourceExpiryMetric  *prometheus.Desc
 	resourceTotalMetric   *prometheus.Desc
 	resourceSuccessMetric *prometheus.Desc
 	resourceErrorsMetric  *prometheus.Desc
 	errorsMetric          *prometheus.Desc
 
-	resourcesUpdates chan VaultEvent
-	resources        map[string]VaultEvent
+	resourceExpiryUpdates chan ResourceExpiry
+	resourceExpiry        map[string]time.Duration
 
 	resourceTotalUpdates chan ResourceTotal
 	resourceTotals       map[ResourceTotal]int
@@ -36,6 +35,11 @@ type MetricsCollector struct {
 
 type Error struct {
 	err string
+}
+
+type ResourceExpiry struct {
+	resourceID string
+	expiresIn time.Duration
 }
 
 type ResourceTotal struct {
@@ -57,14 +61,9 @@ var metricsMutex sync.Mutex
 func (m MetricsCollector) init() {
 	for {
 		select {
-		case event := <-m.resourcesUpdates:
-			if event.Type == EventTypeFailure {
-				continue
-			}
-
-			id := event.Resource.ID()
+		case resourceExpiry := <-m.resourceExpiryUpdates:
 			m.metricsMutex.Lock()
-			m.resources[id] = event
+			m.resourceExpiry[resourceExpiry.resourceID] = resourceExpiry.expiresIn
 			m.metricsMutex.Unlock()
 		case resourceTotal := <-m.resourceTotalUpdates:
 			m.metricsMutex.Lock()
@@ -92,6 +91,13 @@ func (m *MetricsCollector) Error(err string) {
 	}
 }
 
+func (m *MetricsCollector) ResourceExpiry(resourceID string, expiresIn time.Duration) {
+	m.resourceExpiryUpdates<- ResourceExpiry {
+		resourceID: resourceID,
+		expiresIn: expiresIn,
+	}
+}
+
 func (m *MetricsCollector) ResourceTotal(resourceID string) {
 	m.resourceTotalUpdates <- ResourceTotal{
 		resourceID: resourceID,
@@ -111,12 +117,12 @@ func (m *MetricsCollector) ResourceError(resourceID, err string) {
 	}
 }
 
-func RegisterMetricsCollector(role string, resourcesUpdates chan VaultEvent) {
+func RegisterMetricsCollector(role string) {
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
 
 	metrics = &MetricsCollector{
-		resourceMetric: prometheus.NewDesc("vault_sidekick_certificate_expiry_gauge",
+		resourceExpiryMetric: prometheus.NewDesc("vault_sidekick_certificate_expiry_gauge",
 			"vault_sidekick_certificate_expiry_gauge",
 			[]string{"resource_id", "role"},
 			nil,
@@ -144,8 +150,8 @@ func RegisterMetricsCollector(role string, resourcesUpdates chan VaultEvent) {
 
 		role: role,
 
-		resourcesUpdates: resourcesUpdates,
-		resources:        make(map[string]VaultEvent),
+		resourceExpiryUpdates: make(chan ResourceExpiry, 10),
+		resourceExpiry:        make(map[string]time.Duration),
 
 		resourceTotalUpdates: make(chan ResourceTotal, 10),
 		resourceTotals:      make(map[ResourceTotal]int),
@@ -173,7 +179,7 @@ func GetMetrics() *MetricsCollector {
 }
 
 func (m *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- m.resourceMetric
+	ch <- m.resourceExpiryMetric
 	ch <- m.resourceErrorsMetric
 	ch <- m.errorsMetric
 }
@@ -182,22 +188,8 @@ func (m *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	m.metricsMutex.RLock()
 	defer m.metricsMutex.RUnlock()
 
-	now := time.Now()
-	for resourceID, resourceEvent := range m.resources {
-		certExpirationJson, ok := resourceEvent.Secret["expiration"].(json.Number)
-		if !ok {
-			m.Error("metrics_error")
-			continue
-		}
-
-		certExpiration, err := certExpirationJson.Int64()
-		if err != nil {
-			m.Error("metrics_error")
-			continue
-		}
-
-		expiresIn := time.Unix(certExpiration, 0).Sub(now)
-		ch <- prometheus.MustNewConstMetric(m.resourceMetric, prometheus.GaugeValue, expiresIn.Seconds(),
+	for resourceID, expiresIn := range m.resourceExpiry {
+		ch <- prometheus.MustNewConstMetric(m.resourceExpiryMetric, prometheus.GaugeValue, expiresIn.Seconds(),
 			resourceID, m.role)
 	}
 
