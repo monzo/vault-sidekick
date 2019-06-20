@@ -147,19 +147,19 @@ func reportExpiryMetrics(updates chan VaultEvent) {
 				continue
 			}
 
-			certExpirationJson, ok := event.Secret["expiration"].(json.Number)
+			expirationJSON, ok := event.Secret["expiration"].(json.Number)
 			if !ok {
 				metrics.Error("metrics_error")
 				continue
 			}
 
-			certExpiration, err := certExpirationJson.Int64()
+			expiration, err := expirationJSON.Int64()
 			if err != nil {
 				metrics.Error("metrics_error")
 				continue
 			}
 
-			metrics.ResourceExpiry(event.Resource.ID(), time.Unix(certExpiration, 0))
+			metrics.ResourceExpiry(event.Resource.ID(), time.Unix(expiration, 0))
 		}
 	}
 }
