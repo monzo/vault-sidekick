@@ -180,6 +180,8 @@ func GetMetrics() *MetricsCollector {
 
 func (m *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- m.resourceExpiryMetric
+	ch <- m.resourceTotalMetric
+	ch <- m.resourceSuccessMetric
 	ch <- m.resourceErrorsMetric
 	ch <- m.errorsMetric
 }
