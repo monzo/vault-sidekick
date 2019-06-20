@@ -24,11 +24,13 @@ import (
 	"net"
 	"net/http"
 	"time"
-
 	"strings"
+
 
 	"github.com/golang/glog"
 	"github.com/hashicorp/vault/api"
+
+	"github.com/monzo/vault-sidekick/metrics"
 )
 
 // AuthInterface is the authentication interface
@@ -149,11 +151,11 @@ func (r *VaultService) vaultServiceProcessor() {
 					glog.V(10).Infof("resource: %s has a previous lease: %s", x.resource, leaseID)
 				}
 
-				GetMetrics().ResourceTotal(x.resource.ID())
+				metrics.ResourceTotal(x.resource.ID())
 
 				err := r.get(x)
 				if err != nil {
-					GetMetrics().ResourceError(x.resource.ID())
+					metrics.ResourceError(x.resource.ID())
 					glog.Errorf("failed to retrieve the resource: %s from vault, error: %s", x.resource, err)
 					// reschedule the attempt for later
 					r.scheduleIn(x, retrieveChannel, getDurationWithin(3, 10))
@@ -165,7 +167,7 @@ func (r *VaultService) vaultServiceProcessor() {
 					break
 				}
 
-				GetMetrics().ResourceSuccess(x.resource.ID())
+				metrics.ResourceSuccess(x.resource.ID())
 
 				glog.V(4).Infof("successfully retrieved resource: %s, leaseID: %s", x.resource, x.secret.LeaseID)
 				x.resource.Retries = 0
@@ -216,7 +218,7 @@ func (r *VaultService) vaultServiceProcessor() {
 
 				// step: are we renewing the resource?
 				if x.resource.Renewable {
-					GetMetrics().ResourceTotal(x.resource.ID())
+					metrics.ResourceTotal(x.resource.ID())
 
 					// step: is the underlining resource even renewable? - otherwise we can just grab a new lease
 					if !x.secret.Renewable {
@@ -228,7 +230,7 @@ func (r *VaultService) vaultServiceProcessor() {
 					// step: lets renew the resource
 					err := r.renew(x)
 					if err != nil {
-						GetMetrics().ResourceError(x.resource.ID())
+						metrics.ResourceError(x.resource.ID())
 						glog.Errorf("failed to renew the resource: %s for renewal, error: %s", x.resource, err)
 						// reschedule the attempt for later
 						r.scheduleIn(x, renewChannel, getDurationWithin(3, 10))
@@ -240,7 +242,7 @@ func (r *VaultService) vaultServiceProcessor() {
 						break
 					}
 
-					GetMetrics().ResourceSuccess(x.resource.ID())
+					metrics.ResourceSuccess(x.resource.ID())
 
 					glog.V(4).Infof("successfully renewed resource: %s, leaseID: %s", x.resource, x.secret.LeaseID)
 					x.resource.Retries = 0

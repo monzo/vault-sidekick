@@ -19,7 +19,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -27,7 +26,8 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/monzo/vault-sidekick/metrics"
 )
 
 var (
@@ -37,7 +37,6 @@ var (
 )
 
 func main() {
-
 	version := fmt.Sprintf("%s (git+sha %s)", release, gitsha)
 	// step: parse and validate the command line / environment options
 	if err := parseOptions(); err != nil {
@@ -58,22 +57,20 @@ func main() {
 	if err != nil {
 		showUsage("unable to create the vault client: %s", err)
 	}
+
+	metrics.Init(options.vaultAuthOptions.RoleID, options.metricsPort)
+
 	// step: create a channel to receive events upon and add our resources for renewal
 	updates := make(chan VaultEvent, 10)
 	vault.AddListener(updates)
 
+	// Start a background worker which listens for resource updates and reports expiry metrics.
 	go reportExpiryMetrics(updates)
 
 	// step: create a channel to receive events and keep the metrics
 	// collector data in sync
 	metricUpdates := make(chan VaultEvent, 10)
 	vault.AddListener(metricUpdates)
-	RegisterMetricsCollector(options.vaultAuthOptions.RoleID)
-
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", options.metricsPort), nil))
-	}()
 
 	// step: setup the termination signals
 	signalChannel := make(chan os.Signal)
