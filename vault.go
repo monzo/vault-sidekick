@@ -28,7 +28,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/hashicorp/vault/api"
 
-	"github.com/UKHomeOffice/vault-sidekick/metrics"
+	"github.com/monzo/vault-sidekick/metrics"
 )
 
 // AuthInterface is the authentication interface
