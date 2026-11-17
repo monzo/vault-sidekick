@@ -61,6 +61,14 @@ func main() {
 		showUsage("unable to create the vault client: %s", err)
 	}
 
+	exit := func(code int) {
+		// A token passed in with the token method belongs to the caller, so only revoke one we logged in for.
+		if options.vaultAuthOptions.Method != "token" {
+			vault.revokeToken()
+		}
+		os.Exit(code)
+	}
+
 	// step: create a channel to receive events upon and add our resources for renewal
 	updates := make(chan VaultEvent, 10)
 	vault.AddListener(updates)
@@ -92,7 +100,7 @@ func main() {
 	failedResource := false
 	if options.oneShot && len(toProcess) == 0 {
 		glog.Infof("nothing to retrieve from vault. exiting...")
-		os.Exit(0)
+		exit(0)
 	}
 	// step: we simply wait for events i.e. secrets from vault and write them to the output directory
 	for {
@@ -127,15 +135,15 @@ func main() {
 				if len(toProcess) == 0 {
 					glog.Infof("no resources left to process. exiting...")
 					if failedResource {
-						os.Exit(1)
+						exit(1)
 					} else {
-						os.Exit(0)
+						exit(0)
 					}
 				}
 			}(evt)
 		case <-signalChannel:
 			glog.Infof("recieved a termination signal, shutting down the service")
-			os.Exit(0)
+			exit(0)
 		}
 	}
 }
