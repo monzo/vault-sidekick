@@ -358,6 +358,18 @@ func (r VaultService) revoke(lease string) error {
 	return nil
 }
 
+// revokeToken revokes the client's own token. Vault keeps an unrevoked token in storage until
+// its TTL runs out, so a one-shot run that exits without revoking leaves one behind per pod start.
+// Revoking also revokes every lease created with the token, so dynamic credentials written out
+// (e.g. aws or database) stop working once vault-sidekick exits.
+func (r VaultService) revokeToken() {
+	if err := r.client.Auth().Token().RevokeSelf(""); err != nil {
+		glog.Errorf("failed to revoke the vault token, error: %s", err)
+		return
+	}
+	glog.Infof("revoked the vault token")
+}
+
 // get retrieves a secret from the vault
 //	rn			: the watched resource
 func (r VaultService) get(rn *watchedResource) error {
